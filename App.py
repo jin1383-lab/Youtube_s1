@@ -94,7 +94,7 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    # 7. 분석 시작 버튼 (맨 아래 영상길이 밑으로 이동 완료)
+    # 7. 분석 시작 버튼
     search_triggered = st.button("🚀 분석 시작", use_container_width=True)
 
 # --- 데이터 수집 로직 ---
@@ -175,18 +175,4 @@ col_count, col_sort = st.columns([2, 3])
 # 데이터 필터링 가동 (세션 데이터 기준)
 filtered_data = st.session_state.raw_data
 
-if filtered_data:
-    # 1. 뷰어단 필터링 적용
-    filtered_data = [
-        item for item in filtered_data
-        if item["viewCount"] >= min_view and (max_view == 0 or item["viewCount"] <= max_view)
-        and item["subCount"] >= min_sub and (max_sub == 0 or item["subCount"] <= max_sub)
-    ]
-    
-    # 2. 초 단위 시간 필터링 적용
-    if duration_option == "10초 미만": filtered_data = [i for i in filtered_data if i["duration"] < 10]
-    elif duration_option == "30초 미만": filtered_data = [i for i in filtered_data if i["duration"] < 30]
-    elif duration_option == "1분(60초) 미만": filtered_data = [i for i in filtered_data if i["duration"] < 60]
-    elif duration_option == "3분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 180]
-    elif duration_option == "10분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 600]
-    elif duration_option == "20분 이상": filtered_data = [i for i in filtered_data if i["duration"] >=
+if filtered
