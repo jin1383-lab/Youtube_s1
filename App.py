@@ -45,7 +45,6 @@ with st.sidebar:
     st.markdown("---")
     
     # 1. API Key 자동 로드 및 수동 백업 처리
-    # Streamlit Secrets에 등록된 키를 우선 탐색하고, 없을 경우에만 빈 입력창을 보여줍니다.
     default_api_key = ""
     if "YOUTUBE_API_KEY" in st.secrets:
         default_api_key = st.secrets["YOUTUBE_API_KEY"]
@@ -75,13 +74,10 @@ with st.sidebar:
     # 4. 기간 설정
     date_option = st.selectbox("📅 기간 설정", ["최근 3일", "최근 1주일", "최근 1달", "최근 3개월", "최근 6개월", "최근 1년", "전체"], index=2)
     
-    # 5. 분석 시작 버튼
-    search_triggered = st.button("🚀 분석 시작", use_container_width=True)
-
     st.markdown("---")
     st.subheader("📊 실시간 정밀 필터")
     
-    # 6. 조회수 & 구독자 범위 필터 (실시간 반응형)
+    # 5. 조회수 & 구독자 범위 필터 (실시간 반응형)
     col_v1, col_v2 = st.columns(2)
     with col_v1: min_view = st.number_input("최소 조회수", min_value=0, value=0, step=1000)
     with col_v2: max_view = st.number_input("최대 조회수 (0은 제한없음)", min_value=0, value=0, step=10000)
@@ -90,12 +86,16 @@ with st.sidebar:
     with col_s1: min_sub = st.number_input("최소 구독자", min_value=0, value=0, step=100)
     with col_s2: max_sub = st.number_input("최대 구독자 (0은 제한없음)", min_value=0, value=0, step=1000)
     
-    # 7. 초 단위 정밀 시간 필터 (실시간 반응형)
+    # 6. 초 단위 정밀 시간 필터 (실시간 반응형)
     duration_option = st.selectbox(
         "⏱️ 영상 길이 (정밀 필터)", 
         ["전체 길이", "10초 미만", "30초 미만", "1분(60초) 미만", "3분 미만", "10분 미만", "20분 이상"],
         index=0
     )
+
+    st.markdown("---")
+    # 7. 분석 시작 버튼 (맨 아래 영상길이 밑으로 이동 완료)
+    search_triggered = st.button("🚀 분석 시작", use_container_width=True)
 
 # --- 데이터 수집 로직 ---
 if search_triggered:
@@ -189,42 +189,4 @@ if filtered_data:
     elif duration_option == "1분(60초) 미만": filtered_data = [i for i in filtered_data if i["duration"] < 60]
     elif duration_option == "3분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 180]
     elif duration_option == "10분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 600]
-    elif duration_option == "20분 이상": filtered_data = [i for i in filtered_data if i["duration"] >= 1200]
-
-    with col_sort:
-        sort_by = st.radio("정렬 기준", ["조회수 순", "🔥 떡상 성과순", "최신순"], horizontal=True)
-        
-    if sort_by == "조회수 순":
-        filtered_data = sorted(filtered_data, key=lambda x: x["viewCount"], reverse=True)
-    elif "떡상" in sort_by:
-        filtered_data = sorted(filtered_data, key=lambda x: x["viralScore"], reverse=True)
-    elif sort_by == "최신순":
-        filtered_data = sorted(filtered_data, key=lambda x: x["publishedAt"], reverse=True)
-
-    with col_count:
-        st.subheader(f"🔍 필터링 결과: {len(filtered_data)}개")
-
-    # --- 대시보드 그리드 UI 출력 ---
-    cols = st.columns(4)
-    for idx, item in enumerate(filtered_data):
-        col = cols[idx % 4]
-        with col:
-            with st.container(border=True):
-                st.image(item["thumb"], use_container_width=True)
-                st.caption(f"⏱️ 영상 길이: {format_duration(item['duration'])}")
-                st.markdown(f"**[{item['title']}](https://youtube.com/watch?v={item['id']})**")
-                st.caption(f"👤 {item['channelTitle']}")
-                
-                multiplier = item['viralScore'] / 100
-                if item['viralScore'] >= 500:
-                    st.error(f"🔥 떡상급 성과 (x{multiplier:.1f})")
-                else:
-                    st.info(f"📈 성과지수 (x{multiplier:.1f})")
-                
-                stat_col1, stat_col2 = st.columns(2)
-                with stat_col1:
-                    st.metric(label="조회수", value=format_num(item['viewCount']))
-                with stat_col2:
-                    st.metric(label="구독자", value=format_num(item['subCount']))
-else:
-    st.info("👈 왼쪽 사이드바에 정보를 입력하고 '🚀 분석 시작' 버튼을 눌러주세요.")
+    elif duration_option == "20분 이상": filtered_data = [i for i in filtered_data if i["duration"] >=
