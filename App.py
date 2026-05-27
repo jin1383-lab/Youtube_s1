@@ -12,17 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 커스텀 스타일 디자인 (안전한 한 줄 압축 방식) ---
-custom_css = (
-    "<style>"
-    ".viral-badge-high { background: linear-gradient(135deg, #d50000, #ff1744, #ff5252); color: white; padding: 4px 8px; border-radius: 4px; font-weight: 800; font-size: 11px; text-align: center; } "
-    ".viral-badge-normal { background-color: #333333; color: #aaaaaa; padding: 4px 8px; border-radius: 4px; font-weight: 800; font-size: 11px; text-align: center; } "
-    ".stats-container { background-color: #111111; padding: 8px; border-radius: 6px; font-size: 12px; margin-top: 5px; } "
-    ".duration-tag { background-color: rgba(0,0,0,0.8); color: #fff; padding: 2px 6px; font-size: 11px; border-radius: 4px; font-weight: bold; }"
-    "</style>"
-)
-st.markdown(custom_css, unsafe_content_html=True)
-
 # --- 세션 상태 초기화 (데이터 보존용) ---
 if "raw_data" not in st.session_state:
     st.session_state.raw_data = []
@@ -52,7 +41,7 @@ def format_num(n):
 # --- 사이드바 제어 패널 ---
 with st.sidebar:
     st.title("🚀 Insight Dash")
-    st.caption("Streamlit v5.0 (Python) 변환 버전")
+    st.caption("Streamlit v5.0 (Python)")
     st.markdown("---")
     
     # 1. API Key 입력
@@ -105,7 +94,7 @@ if search_triggered:
                 youtube = build("youtube", "v3", developerKey=api_key)
                 published_after = get_published_after(date_option)
                 
-                # Step 1: Search API 호출 파라미터 구성
+                # Step 1: Search API 호출
                 search_kwargs = {
                     "part": "snippet",
                     "q": keyword,
@@ -124,13 +113,13 @@ if search_triggered:
                     st.warning("검색 결과가 없습니다.")
                     st.session_state.raw_data = []
                 else:
-                    # Step 2: Videos API 호출 (조회수 및 재생시간 확보)
+                    # Step 2: Videos API 호출
                     video_res = youtube.videos().list(
                         part="statistics,snippet,contentDetails",
                         id=",".join(video_ids)
                     ).execute()
                     
-                    # Step 3: Channels API 호출 (구독자수 확보)
+                    # Step 3: Channels API 호출
                     channel_ids = list(set([item["snippet"]["channelId"] for item in video_res.get("items", [])]))
                     channel_res = youtube.channels().list(
                         part="statistics",
@@ -209,24 +198,24 @@ if filtered_data:
         with col:
             with st.container(border=True):
                 st.image(item["thumb"], use_container_width=True)
-                st.markdown(f"<span class='duration-tag'>⏱️ {format_duration(item['duration'])}</span>", unsafe_content_html=True)
                 
-                st.markdown(f"**[{item['title']}](https://youtube.com/watch?v={item['id']})**", help=item['title'])
+                # 순수 Streamlit 컴포넌트로 정보 깔끔하게 배치
+                st.caption(f"⏱️ 영상 길이: {format_duration(item['duration'])}")
+                st.markdown(f"**[{item['title']}](https://youtube.com/watch?v={item['id']})**")
                 st.caption(f"👤 {item['channelTitle']}")
                 
+                # 떡상 배지를 순수 텍스트 이모지로 대체
                 multiplier = item['viralScore'] / 100
                 if item['viralScore'] >= 500:
-                    st.markdown(f"<div class='viral-badge-high'>🔥 떡상 (x{multiplier:.1f})</div>", unsafe_content_html=True)
+                    st.error(f"🔥 떡상급 성과 (x{multiplier:.1f})")
                 else:
-                    st.markdown(f"<div class='viral-badge-normal'>성과지수 x{multiplier:.1f}</div>", unsafe_content_html=True)
+                    st.info(f"📈 성과지수 (x{multiplier:.1f})")
                 
-                st.markdown(f"""
-                    <div class='stats-container'>
-                        <table style='width:100%; border:none; color:#aaaaaa;'>
-                            <tr><td>조회수</td><td style='text-align:right; font-weight:bold; color:white;'>{format_num(item['viewCount'])}</td></tr>
-                            <tr><td>구독자</td><td style='text-align:right; font-weight:bold; color:white;'>{format_num(item['subCount'])}</td></tr>
-                        </table>
-                    </div>
-                """, unsafe_content_html=True)
+                # 스탯 대시보드 구조화
+                stat_col1, stat_col2 = st.columns(2)
+                with stat_col1:
+                    st.metric(label="조회수", value=format_num(item['viewCount']))
+                with stat_col2:
+                    st.metric(label="구독자", value=format_num(item['subCount']))
 else:
     st.info("👈 왼쪽 사이드바에 정보를 입력하고 '🚀 분석 시작' 버튼을 눌러주세요.")
