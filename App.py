@@ -6,7 +6,7 @@ import pandas as pd
 
 # --- 페이지 설정 ---
 st.set_page_config(
-    page_title="YouTube Insight Dashboard V5.0",
+    page_title="YouTube Insight Dashboard V5.1",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -41,11 +41,24 @@ def format_num(n):
 # --- 사이드바 제어 패널 ---
 with st.sidebar:
     st.title("🚀 Insight Dash")
-    st.caption("Streamlit v5.0 (Python)")
+    st.caption("Streamlit v5.1 (Auto API 등록 버전)")
     st.markdown("---")
     
-    # 1. API Key 입력
-    api_key = st.text_input("🔑 API KEY", type="password", help="유튜브 v3 API 키를 입력하세요.")
+    # 1. API Key 자동 로드 및 수동 백업 처리
+    # Streamlit Secrets에 등록된 키를 우선 탐색하고, 없을 경우에만 빈 입력창을 보여줍니다.
+    default_api_key = ""
+    if "YOUTUBE_API_KEY" in st.secrets:
+        default_api_key = st.secrets["YOUTUBE_API_KEY"]
+        st.success("✅ 고유 API KEY가 시스템에 자동 등록되었습니다.")
+    else:
+        st.warning("⚠️ 자동 등록된 API KEY가 없습니다. 아래에 수동 입력하거나 Secrets를 설정하세요.")
+
+    api_key = st.text_input(
+        "🔑 API KEY 설정", 
+        value=default_api_key, 
+        type="password", 
+        help="Secrets에 키가 등록되어 있으면 자동으로 채워집니다."
+    )
     
     # 2. 국가 선택
     region_dict = {
@@ -198,20 +211,16 @@ if filtered_data:
         with col:
             with st.container(border=True):
                 st.image(item["thumb"], use_container_width=True)
-                
-                # 순수 Streamlit 컴포넌트로 정보 깔끔하게 배치
                 st.caption(f"⏱️ 영상 길이: {format_duration(item['duration'])}")
                 st.markdown(f"**[{item['title']}](https://youtube.com/watch?v={item['id']})**")
                 st.caption(f"👤 {item['channelTitle']}")
                 
-                # 떡상 배지를 순수 텍스트 이모지로 대체
                 multiplier = item['viralScore'] / 100
                 if item['viralScore'] >= 500:
                     st.error(f"🔥 떡상급 성과 (x{multiplier:.1f})")
                 else:
                     st.info(f"📈 성과지수 (x{multiplier:.1f})")
                 
-                # 스탯 대시보드 구조화
                 stat_col1, stat_col2 = st.columns(2)
                 with stat_col1:
                     st.metric(label="조회수", value=format_num(item['viewCount']))
