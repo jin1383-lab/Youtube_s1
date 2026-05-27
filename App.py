@@ -175,4 +175,56 @@ col_count, col_sort = st.columns([2, 3])
 # 데이터 필터링 가동 (세션 데이터 기준)
 filtered_data = st.session_state.raw_data
 
-if filtered
+if filtered_data:
+    # 1. 뷰어단 필터링 적용
+    filtered_data = [
+        item for item in filtered_data
+        if item["viewCount"] >= min_view and (max_view == 0 or item["viewCount"] <= max_view)
+        and item["subCount"] >= min_sub and (max_sub == 0 or item["subCount"] <= max_sub)
+    ]
+    
+    # 2. 초 단위 시간 필터링 적용
+    if duration_option == "10초 미만": filtered_data = [i for i in filtered_data if i["duration"] < 10]
+    elif duration_option == "30초 미만": filtered_data = [i for i in filtered_data if i["duration"] < 30]
+    elif duration_option == "1분(60초) 미만": filtered_data = [i for i in filtered_data if i["duration"] < 60]
+    elif duration_option == "3분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 180]
+    elif duration_option == "10분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 600]
+    elif duration_option == "20분 이상": filtered_data = [i for i in filtered_data if i["duration"] >= 1200]
+
+    with col_sort:
+        sort_by = st.radio("정렬 기준", ["조회수 순", "🔥 떡상 성과순", "최신순"], horizontal=True)
+        
+    if sort_by == "조회수 순":
+        filtered_data = sorted(filtered_data, key=lambda x: x["viewCount"], reverse=True)
+    elif "떡상" in sort_by:
+        filtered_data = sorted(filtered_data, key=lambda x: x["viralScore"], reverse=True)
+    elif sort_by == "최신순":
+        filtered_data = sorted(filtered_data, key=lambda x: x["publishedAt"], reverse=True)
+
+    with col_count:
+        st.subheader(f"🔍 필터링 결과: {len(filtered_data)}개")
+
+    # --- 대시보드 그리드 UI 출력 ---
+    cols = st.columns(4)
+    for idx, item in enumerate(filtered_data):
+        col = cols[idx % 4]
+        with col:
+            with st.container(border=True):
+                st.image(item["thumb"], use_container_width=True)
+                st.caption(f"⏱️ 영상 길이: {format_duration(item['duration'])}")
+                st.markdown(f"**[{item['title']}](https://youtube.com/watch?v={item['id']})**")
+                st.caption(f"👤 {item['channelTitle']}")
+                
+                multiplier = item['viralScore'] / 100
+                if item['viralScore'] >= 500:
+                    st.error(f"🔥 떡상급 성과 (x{multiplier:.1f})")
+                else:
+                    st.info(f"📈 성과지수 (x{multiplier:.1f})")
+                
+                stat_col1, stat_col2 = st.columns(2)
+                with stat_col1:
+                    st.metric(label="조회수", value=format_num(item['viewCount']))
+                with stat_col2:
+                    st.metric(label="구독자", value=format_num(item['subCount']))
+else:
+    st.info("👈 왼쪽 사이드바에 정보를 입력하고 '🚀 분석 시작' 버튼을 눌러주세요.")
