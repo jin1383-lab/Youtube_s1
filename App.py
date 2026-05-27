@@ -112,11 +112,3 @@ if search_triggered:
                     "type": "video",
                     "maxResults": 50
                 }
-                if region_code: search_kwargs["regionCode"] = region_code
-                if published_after: search_kwargs["publishedAfter"] = published_after
-                
-                search_res = youtube.search().list(**search_kwargs).execute()
-                video_ids = [item["id"]["videoId"] for item in search_res.get("items", [])]
-                
-                if not video_ids:
-                    st.warning("
