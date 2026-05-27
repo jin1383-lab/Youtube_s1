@@ -105,10 +105,128 @@ if search_triggered:
                 youtube = build("youtube", "v3", developerKey=api_key)
                 published_after = get_published_after(date_option)
                 
-                # Step 1: Search API 호출
+                # Step 1: Search API 호출 파라미터 구성
                 search_kwargs = {
                     "part": "snippet",
                     "q": keyword,
                     "type": "video",
                     "maxResults": 50
                 }
+                if region_code: 
+                    search_kwargs["regionCode"] = region_code
+                if published_after: 
+                    search_kwargs["publishedAfter"] = published_after
+                
+                search_res = youtube.search().list(**search_kwargs).execute()
+                video_ids = [item["id"]["videoId"] for item in search_res.get("items", [])]
+                
+                if not video_ids:
+                    st.warning("검색 결과가 없습니다.")
+                    st.session_state.raw_data = []
+                else:
+                    # Step 2: Videos API 호출 (조회수 및 재생시간 확보)
+                    video_res = youtube.videos().list(
+                        part="statistics,snippet,contentDetails",
+                        id=",".join(video_ids)
+                    ).execute()
+                    
+                    # Step 3: Channels API 호출 (구독자수 확보)
+                    channel_ids = list(set([item["snippet"]["channelId"] for item in video_res.get("items", [])]))
+                    channel_res = youtube.channels().list(
+                        part="statistics",
+                        id=",".join(channel_ids)
+                    ).execute()
+                    
+                    channel_map = {c["id"]: int(c["statistics"].get("subscriberCount", 1)) for c in channel_res.get("items", [])}
+                    
+                    # 데이터 가공 및 세션 저장
+                    parsed_list = []
+                    for item in video_res.get("items", []):
+                        views = int(item["statistics"].get("viewCount", 0))
+                        subs = channel_map.get(item["snippet"]["channelId"], 1)
+                        if subs == 0: subs = 1
+                        
+                        iso_duration = item["contentDetails"].get("duration", "PT0S")
+                        duration_sec = int(isodate.parse_duration(iso_duration).total_seconds())
+                        
+                        parsed_list.append({
+                            "id": item["id"],
+                            "title": item["snippet"]["title"],
+                            "channelTitle": item["snippet"]["channelTitle"],
+                            "publishedAt": item["snippet"]["publishedAt"],
+                            "thumb": item["snippet"]["thumbnails"]["high"]["url"],
+                            "viewCount": views,
+                            "subCount": subs,
+                            "duration": duration_sec,
+                            "viralScore": (views / subs) * 100
+                        })
+                    
+                    st.session_state.raw_data = parsed_list
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
+
+# --- 상단 탑바 및 정렬 설정 ---
+st.title("📺 YouTube Insight Dashboard")
+
+col_count, col_sort = st.columns([2, 3])
+
+# 데이터 필터링 가동 (세션 데이터 기준)
+filtered_data = st.session_state.raw_data
+
+if filtered_data:
+    # 1. 뷰어단 필터링 적용
+    filtered_data = [
+        item for item in filtered_data
+        if item["viewCount"] >= min_view and (max_view == 0 or item["viewCount"] <= max_view)
+        and item["subCount"] >= min_sub and (max_sub == 0 or item["subCount"] <= max_sub)
+    ]
+    
+    # 2. 초 단위 시간 필터링 적용
+    if duration_option == "10초 미만": filtered_data = [i for i in filtered_data if i["duration"] < 10]
+    elif duration_option == "30초 미만": filtered_data = [i for i in filtered_data if i["duration"] < 30]
+    elif duration_option == "1분(60초) 미만": filtered_data = [i for i in filtered_data if i["duration"] < 60]
+    elif duration_option == "3분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 180]
+    elif duration_option == "10분 미만": filtered_data = [i for i in filtered_data if i["duration"] < 600]
+    elif duration_option == "20분 이상": filtered_data = [i for i in filtered_data if i["duration"] >= 1200]
+
+    with col_sort:
+        sort_by = st.radio("정렬 기준", ["조회수 순", "🔥 떡상 성과순", "최신순"], horizontal=True)
+        
+    if sort_by == "조회수 순":
+        filtered_data = sorted(filtered_data, key=lambda x: x["viewCount"], reverse=True)
+    elif "떡상" in sort_by:
+        filtered_data = sorted(filtered_data, key=lambda x: x["viralScore"], reverse=True)
+    elif sort_by == "최신순":
+        filtered_data = sorted(filtered_data, key=lambda x: x["publishedAt"], reverse=True)
+
+    with col_count:
+        st.subheader(f"🔍 필터링 결과: {len(filtered_data)}개")
+
+    # --- 대시보드 그리드 UI 출력 ---
+    cols = st.columns(4)
+    for idx, item in enumerate(filtered_data):
+        col = cols[idx % 4]
+        with col:
+            with st.container(border=True):
+                st.image(item["thumb"], use_container_width=True)
+                st.markdown(f"<span class='duration-tag'>⏱️ {format_duration(item['duration'])}</span>", unsafe_content_html=True)
+                
+                st.markdown(f"**[{item['title']}](https://youtube.com/watch?v={item['id']})**", help=item['title'])
+                st.caption(f"👤 {item['channelTitle']}")
+                
+                multiplier = item['viralScore'] / 100
+                if item['viralScore'] >= 500:
+                    st.markdown(f"<div class='viral-badge-high'>🔥 떡상 (x{multiplier:.1f})</div>", unsafe_content_html=True)
+                else:
+                    st.markdown(f"<div class='viral-badge-normal'>성과지수 x{multiplier:.1f}</div>", unsafe_content_html=True)
+                
+                st.markdown(f"""
+                    <div class='stats-container'>
+                        <table style='width:100%; border:none; color:#aaaaaa;'>
+                            <tr><td>조회수</td><td style='text-align:right; font-weight:bold; color:white;'>{format_num(item['viewCount'])}</td></tr>
+                            <tr><td>구독자</td><td style='text-align:right; font-weight:bold; color:white;'>{format_num(item['subCount'])}</td></tr>
+                        </table>
+                    </div>
+                """, unsafe_content_html=True)
+else:
+    st.info("👈 왼쪽 사이드바에 정보를 입력하고 '🚀 분석 시작' 버튼을 눌러주세요.")
