@@ -6,7 +6,7 @@ import pandas as pd
 
 # --- 페이지 설정 ---
 st.set_page_config(
-    page_title="YouTube Insight Dashboard V5.3",
+    page_title="YouTube Insight Dashboard V5.5",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -16,7 +16,7 @@ st.set_page_config(
 if "raw_data" not in st.session_state:
     st.session_state.raw_data = []
 
-# --- 헬퍼 함수: 시간 변환 (구글 API 포맷 오류 수정 완료) ---
+# --- 헬퍼 함수: 시간 변환 (1년 ~ 3년 확장) ---
 def get_published_after(option):
     if option == "전체": return None
     now = datetime.now(timezone.utc)
@@ -26,6 +26,8 @@ def get_published_after(option):
     elif option == "최근 3개월": delta = timedelta(days=90)
     elif option == "최근 6개월": delta = timedelta(days=180)
     elif option == "최근 1년": delta = timedelta(days=365)
+    elif option == "최근 2년": delta = timedelta(days=365 * 2)  # [추가] 2년
+    elif option == "최근 3년": delta = timedelta(days=365 * 3)  # [추가] 3년
     
     # 마이크로초를 제외하고 구글 API가 원하는 표준 규격(YYYY-MM-DDTHH:MM:SSZ)으로 포맷팅
     target_time = now - delta
@@ -43,16 +45,16 @@ def format_num(n):
 # --- 사이드바 제어 패널 ---
 with st.sidebar:
     st.title("🚀 Insight Dash")
-    st.caption("Streamlit v5.3 (오류 수정 및 자동 연동 버전)")
+    st.caption("Streamlit v5.5 (롱폼/숏폼 & 기간 확장 버전)")
     st.markdown("---")
     
-    # API Key 체크 로직 자동화 (secrets.toml 또는 Streamlit Cloud Secrets 연동)
+    # 1. API Key 체크 로직 자동화
     api_key = ""
     if "YOUTUBE_API_KEY" in st.secrets:
         api_key = st.secrets["YOUTUBE_API_KEY"]
-        st.success("✅ YouTube API KEY가 안전하게 연결되었습니다.")
+        st.success("✅ YouTube API KEY 연결 완료")
     else:
-        st.error("⚠️ API KEY가 등록되지 않았습니다!\n로컬 환경의 `.streamlit/secrets.toml` 파일이나 Streamlit Cloud의 Secrets 설정을 확인해 주세요.")
+        st.error("⚠️ API KEY가 등록되지 않았습니다.\nSecrets 설정을 확인해 주세요.")
     
     st.markdown("---")
     
@@ -68,8 +70,12 @@ with st.sidebar:
     # 3. 키워드 검색
     keyword = st.text_input("🔍 키워드 검색", placeholder="검색어 입력")
     
-    # 4. 기간 설정
-    date_option = st.selectbox("📅 기간 설정", ["최근 3일", "최근 1주일", "최근 1달", "최근 3개월", "최근 6개월", "최근 1년", "전체"], index=2)
+    # 4. 기간 설정 (최근 2년, 3년 옵션 반영)
+    date_option = st.selectbox(
+        "📅 기간 설정", 
+        ["최근 3일", "최근 1주일", "최근 1달", "최근 3개월", "최근 6개월", "최근 1년", "최근 2년", "최근 3년", "전체"], 
+        index=5
+    )
     
     st.markdown("---")
     st.subheader("📊 실시간 정밀 필터")
@@ -77,10 +83,149 @@ with st.sidebar:
     # 5. 조회수 & 구독자 범위 필터 (실시간 반응형)
     col_v1, col_v2 = st.columns(2)
     with col_v1: min_view = st.number_input("최소 조회수", min_value=0, value=0, step=1000)
-    with col_v2: max_view = st.number_input("최대 조회수 (0은 제한없음)", min_value=0, value=0, step=10000)
+    with col_v2: max_view = st.number_input("최대 조회수 (0은 없음)", min_value=0, value=0, step=10000)
     
     col_s1, col_s2 = st.columns(2)
     with col_s1: min_sub = st.number_input("최소 구독자", min_value=0, value=0, step=100)
-    with col_s2: max_sub = st.number_input("최대 구독자 (0은 제한없음)", min_value=0, value=0, step=1000)
+    with col_s2: max_sub = st.number_input("최대 구독자 (0은 없음)", min_value=0, value=0, step=1000)
     
-    # 6. 초 단위 정밀 시간 필터 (실시간 반응형)
+    # 6. [수정] 롱폼 / 숏폼 필터링 구성
+    media_type = st.radio(
+        "⏱️ 영상 형태 필터", 
+        ["전체", "숏폼 (1분 미만)", "롱폼 (1분 이상)"],
+        horizontal=True
+    )
+
+    st.markdown("---")
+    # 7. 분석 시작 버튼
+    search_triggered = st.button("🚀 분석 시작", use_container_width=True)
+
+# --- 데이터 수집 로직 ---
+if search_triggered:
+    if not api_key:
+        st.error("⚠️ 시스템에 등록된 API 키가 없습니다. 설정 후 다시 시도하세요.")
+    elif not keyword:
+        st.error("⚠️ 검색 키워드를 입력해 주세요.")
+    else:
+        with st.spinner("데이터 수집 및 분석 중..."):
+            try:
+                youtube = build("youtube", "v3", developerKey=api_key)
+                published_after = get_published_after(date_option)
+                
+                # Step 1: Search API 호출
+                search_kwargs = {
+                    "part": "snippet",
+                    "q": keyword,
+                    "type": "video",
+                    "maxResults": 50
+                }
+                if region_code: 
+                    search_kwargs["regionCode"] = region_code
+                if published_after: 
+                    search_kwargs["publishedAfter"] = published_after
+                
+                search_res = youtube.search().list(**search_kwargs).execute()
+                video_ids = [item["id"]["videoId"] for item in search_res.get("items", [])]
+                
+                if not video_ids:
+                    st.warning("검색 결과가 없습니다.")
+                    st.session_state.raw_data = []
+                else:
+                    # Step 2: Videos API 호출
+                    video_res = youtube.videos().list(
+                        part="statistics,snippet,contentDetails",
+                        id=",".join(video_ids)
+                    ).execute()
+                    
+                    # Step 3: Channels API 호출
+                    channel_ids = list(set([item["snippet"]["channelId"] for item in video_res.get("items", [])]))
+                    channel_res = youtube.channels().list(
+                        part="statistics",
+                        id=",".join(channel_ids)
+                    ).execute()
+                    
+                    channel_map = {c["id"]: int(c["statistics"].get("subscriberCount", 1)) for c in channel_res.get("items", [])}
+                    
+                    # 데이터 가공 및 세션 저장
+                    parsed_list = []
+                    for item in video_res.get("items", []):
+                        views = int(item["statistics"].get("viewCount", 0))
+                        subs = channel_map.get(item["snippet"]["channelId"], 1)
+                        if subs == 0: subs = 1
+                        
+                        iso_duration = item["contentDetails"].get("duration", "PT0S")
+                        duration_sec = int(isodate.parse_duration(iso_duration).total_seconds())
+                        
+                        parsed_list.append({
+                            "id": item["id"],
+                            "title": item["snippet"]["title"],
+                            "channelTitle": item["snippet"]["channelTitle"],
+                            "publishedAt": item["snippet"]["publishedAt"],
+                            "thumb": item["snippet"]["thumbnails"]["high"]["url"],
+                            "viewCount": views,
+                            "subCount": subs,
+                            "duration": duration_sec,
+                            "viralScore": (views / subs) * 100
+                        })
+                    
+                    st.session_state.raw_data = parsed_list
+            except Exception as e:
+                st.error(f"오류가 발생했습니다: {e}")
+
+# --- 메인 레이아웃 및 뷰어단 필터링 ---
+st.title("📺 YouTube Insight Dashboard")
+
+col_count, col_sort = st.columns([2, 3])
+filtered_data = st.session_state.raw_data
+
+if filtered_data:
+    # 1. 실시간 조회수 & 구독자 수 필터 적용
+    filtered_data = [
+        item for item in filtered_data
+        if item["viewCount"] >= min_view and (max_view == 0 or item["viewCount"] <= max_view)
+        and item["subCount"] >= min_sub and (max_sub == 0 or item["subCount"] <= max_sub)
+    ]
+    
+    # 2. [수정] 실시간 롱폼 / 숏폼 필터 적용 (60초 기준)
+    if media_type == "숏폼 (1분 미만)":
+        filtered_data = [i for i in filtered_data if i["duration"] < 60]
+    elif media_type == "롱폼 (1분 이상)":
+        filtered_data = [i for i in filtered_data if i["duration"] >= 60]
+
+    with col_sort:
+        sort_by = st.radio("정렬 기준", ["조회수 순", "🔥 떡상 성과순", "최신순"], horizontal=True)
+        
+    if sort_by == "조회수 순":
+        filtered_data = sorted(filtered_data, key=lambda x: x["viewCount"], reverse=True)
+    elif "떡상" in sort_by:
+        filtered_data = sorted(filtered_data, key=lambda x: x["viralScore"], reverse=True)
+    elif sort_by == "최신순":
+        filtered_data = sorted(filtered_data, key=lambda x: x["publishedAt"], reverse=True)
+
+    with col_count:
+        st.subheader(f"🔍 필터링 결과: {len(filtered_data)}개")
+
+    # --- 대시보드 그리드 UI 출력 ---
+    cols = st.columns(4)
+    for idx, item in enumerate(filtered_data):
+        col = cols[idx % 4]
+        with col:
+            with st.container(border=True):
+                st.image(item["thumb"], use_container_width=True)
+                st.caption(f"⏱️ 영상 길이: {format_duration(item['duration'])}")
+                st.markdown(f"**[{item['title']}](https://youtube.com/watch?v={item['id']})**")
+                st.caption(f"👤 {item['channelTitle']}")
+                
+                multiplier = item['viralScore'] / 100
+                if item['viralScore'] >= 500:
+                    st.error(f"🔥 떡상급 성과 (x{multiplier:.1f})")
+                else:
+                    st.info(f"📈 성과지수 (x{multiplier:.1f})")
+                
+                stat_col1, stat_col2 = st.columns(2)
+                with stat_col1:
+                    st.metric(label="조회수", value=format_num(item['viewCount']))
+                with stat_col2:
+                    st.metric(label="구독자", value=format_num(item['subCount']))
+else:
+    st.info("👈 왼쪽 사이드바에 정보를 입력하고 '🚀 분석 시작' 버튼을 눌러주세요.")
