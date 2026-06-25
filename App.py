@@ -1,12 +1,12 @@
 import streamlit as st
 from googleapiclient.discovery import build
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import isodate
 import pandas as pd
 
 # --- 페이지 설정 ---
 st.set_page_config(
-    page_title="YouTube Insight Dashboard V5.1",
+    page_title="YouTube Insight Dashboard V5.2",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -19,7 +19,7 @@ if "raw_data" not in st.session_state:
 # --- 헬퍼 함수: 시간 변환 ---
 def get_published_after(option):
     if option == "전체": return None
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)  # 경고(Warning) 방지를 위해 최신 문법으로 수정
     if option == "최근 3일": delta = timedelta(days=3)
     elif option == "최근 1주일": delta = timedelta(days=7)
     elif option == "최근 1달": delta = timedelta(days=30)
@@ -41,23 +41,18 @@ def format_num(n):
 # --- 사이드바 제어 패널 ---
 with st.sidebar:
     st.title("🚀 Insight Dash")
-    st.caption("Streamlit v5.1 (Auto API 등록 버전)")
+    st.caption("Streamlit v5.2 (API 자동 연동 버전)")
     st.markdown("---")
     
-    # 1. API Key 자동 로드 및 수동 백업 처리
-    default_api_key = ""
+    # [수정] API Key 체크 로직 자동화
+    api_key = ""
     if "YOUTUBE_API_KEY" in st.secrets:
-        default_api_key = st.secrets["YOUTUBE_API_KEY"]
-        st.success("✅ 고유 API KEY가 시스템에 자동 등록되었습니다.")
+        api_key = st.secrets["YOUTUBE_API_KEY"]
+        st.success("✅ YouTube API KEY가 안전하게 연결되었습니다.")
     else:
-        st.warning("⚠️ 자동 등록된 API KEY가 없습니다. 아래에 수동 입력하거나 Secrets를 설정하세요.")
-
-    api_key = st.text_input(
-        "🔑 API KEY 설정", 
-        value=default_api_key, 
-        type="password", 
-        help="Secrets에 키가 등록되어 있으면 자동으로 채워집니다."
-    )
+        st.error("⚠️ API KEY가 등록되지 않았습니다!\n로컬 환경의 `.streamlit/secrets.toml` 파일이나 Streamlit Cloud의 Secrets 설정을 확인해 주세요.")
+    
+    st.markdown("---")
     
     # 2. 국가 선택
     region_dict = {
@@ -99,8 +94,10 @@ with st.sidebar:
 
 # --- 데이터 수집 로직 ---
 if search_triggered:
-    if not api_key or not keyword:
-        st.error("⚠️ API 키와 검색 키워드를 모두 입력해 주세요.")
+    if not api_key:
+        st.error("⚠️ 시스템에 등록된 API 키가 없습니다. 설정 후 다시 시도하세요.")
+    elif not keyword:
+        st.error("⚠️ 검색 키워드를 입력해 주세요.")
     else:
         with st.spinner("데이터 수집 및 분석 중..."):
             try:
